@@ -1,0 +1,75 @@
+name: triplit-svelte
+
+networks:
+  triplit-svelte:
+    external: true
+
+services:
+  # Traefik
+  proxy:
+    image: traefik:v3.2
+    platform: linux/amd64
+    container_name: triplit-svelte-proxy
+    command:
+      - '--api.insecure=true'
+      - '--providers.docker=true'
+      - '--entrypoints.web.address=:80'
+    ports:
+      - 80:80
+      # - 443:443
+      # - 8080:8080 # Optional: Enable Dashboard (do not use in production)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik.yaml:/etc/traefik/traefik.yaml:ro
+    restart: unless-stopped
+    networks:
+      - triplit-svelte
+    env_file:
+      - ./env-file.dev.env
+  # Sveltekit
+  app:
+    build:
+      # this context specifies that the container should be built using the
+      # `develop` stage (target attribute) of the Dockerfile located in the
+      # current directory (context attribute)
+      context: .
+      target: develop
+    command: sh -c "pnpm run dev"
+    container_name: triplit-svelte-app
+    platform: linux/amd64
+    ports:
+      - '3000:3000'
+    volumes:
+      - .:/app
+      - /app/node_modules
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.triplit-svelte-http.rule=Host(`triplit-svelte-app.localhost`)
+    networks:
+      - triplit-svelte
+    restart: unless-stopped
+    env_file:
+      - ./env-file.dev.env
+    depends_on:
+      - db-server
+  # Triplit
+  db-server:
+    container_name: triplit-svelte-db
+    image: aspencloud/triplit-server:latest
+    platform: linux/amd64
+    volumes:
+      - db-storage:/app
+    ports:
+      - 8080:8080
+      # - '9090:9090'
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.triplit-svelte-db.rule=Host(`triplit-svelte-db.localhost`)
+    networks:
+      - triplit-svelte
+    restart: unless-stopped
+    env_file:
+      - ./env-file.dev.env
+
+volumes:
+  db-storage:
